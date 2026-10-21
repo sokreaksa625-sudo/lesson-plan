@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="km">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>កម្មវិធីបង្កើតកិច្ចតែងការបង្រៀនស្វ័យប្រវត្តិ</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Google Fonts for Khmer -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Battambang:wght@400;700&family=Moul&display=swap"
+        rel="stylesheet">
+
+    <!-- Libraries for PDF and Word Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.min.js"></script>
+
+    <!-- Custom CSS for Document Layout -->
+    <style>
+        body {
+            font-family: 'Battambang', Arial, sans-serif;
+            background-color: #f3f4f6;
+            line-height: 1.85;
+        }
+
+        .font-moul {
+            font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Moul', cursive;
+            line-height: 2;
+        }
+
+        .font-battambang {
+            font-family: 'Battambang', Arial, sans-serif;
+            line-height: 1.85;
+        }
+
+        /* A4 Paper Simulation */
+        .a4-paper {
+            background: white;
+            width: 100%;
+            max-width: 21cm;
+            min-height: 29.7cm;
+            margin: 0 auto;
+            padding: 2cm 1.5cm;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            page-break-after: always;
+            line-height: 1.85;
+        }
+
+        /* Standard Table Styling for Lesson Plan */
+        .lesson-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            table-layout: fixed;
+            word-wrap: break-word;
+        }
+
+        .lesson-table th,
+        .lesson-table td {
+            border: 1px solid #000;
+            padding: 10px 8px;
+            vertical-align: top;
+            line-height: 1.85;
+        }
+
+        .lesson-table th {
+            text-align: center;
+            font-family: 'Moul', cursive;
+            font-size: 14px;
+            line-height: 2;
+            background-color: #f9fafb;
+        }
+
+        .lesson-table tr {
+            page-break-inside: auto;
+        }
+
+        /* Print Styles */
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 1.2cm;
+            }
+
+            body {
+                background: white;
+                font-family: 'Battambang', Arial, sans-serif;
+                line-height: 1.85 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .no-print {
+                display: none !important;
+            }
+
+            .a4-paper {
+                box-shadow: none;
+                padding: 0 !important;
+                margin: 0 !important;
+                max-width: 100% !important;
+                width: 100% !important;
+                page-break-after: auto;
+                line-height: 1.85 !important;
+            }
+
+            .lesson-table th,
+            .lesson-table td {
+                border: 1px solid #000 !important;
+                padding: 10px 8px !important;
+                line-height: 1.85 !important;
+            }
+
+            .lesson-table th {
+                font-family: 'Moul', cursive !important;
+                line-height: 2 !important;
+            }
+
+            .lesson-table tr {
+                page-break-inside: auto !important;
+            }
+        }
+
+        /* Loading Spinner */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #3b82f6;
+            width: 40px;
+            height: 40px;
+            -webkit-animation: spin 1s linear infinite;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // មុខងារសម្អាតអក្សរ \n ឱ្យទៅជាការចុះបន្ទាត់ធម្មតា
+        const cleanText = (text) => {
+            if (!text) return '';
+            return text.replace(/\\n/g, '\n');
+        };
+
+        const compressImage = (file) => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_SIZE = 1200;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > height) {
+                            if (width > MAX_SIZE) {
+                                height *= MAX_SIZE / width;
+                                width = MAX_SIZE;
+                            }
+                        } else {
+                            if (height > MAX_SIZE) {
+                                width *= MAX_SIZE / height;
+                                height = MAX_SIZE;
+                            }
+                        }
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                        resolve({
+                            name: file.name,
+                            mimeType: 'image/jpeg',
+                            data: dataUrl.split(',')[1],
+                            previewUrl: dataUrl
+                        });
+                    };
+                };
+                reader.onerror = error => reject(error);
+            });
+        };
+
+        const AVAILABLE_MODELS = [
+            { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash (លឿន & ឆ្លាតវៃបំផុត - ណែនាំ)' },
+            { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash (ស្ថិរភាពខ្ពស់)' },
+            { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash (ល្បឿនលឿន)' },
+            { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (សន្សំសំចៃ)' },
+            { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash (អាចមាន High Demand)' },
+            { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+            { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' }
+        ];
+
+        const getFileMimeType = (file) => {
+            if (file.type && file.type.trim() !== '') return file.type;
+            const ext = (file.name || '').split('.').pop().toLowerCase();
+            switch (ext) {
+                case 'pdf': return 'application/pdf';
+                case 'jpg':
+                case 'jpeg': return 'image/jpeg';
+                case 'png': return 'image/png';
+                case 'webp': return 'image/webp';
+                default: return 'application/octet-stream';
+            }
+        };
+
+        const SAMPLE_DEMO_PLAN = {
+            subject: "ភាសាខ្មែរ",
+            grade: "១",
+            lesson_title: "មេរៀនទី១ ៖ ស្រៈ អ អា",
+            sub_title: "ការអាន និងការសរសេរស្រៈ អ អា",
+            duration: "៤៥ នាទី",
+            date: "ថ្ងៃទី ២៨ ខែ កញ្ញា ឆ្នាំ ២០២៦",
+            teacher_name: "លោកគ្រូ សុខ សាន្ត",
+            objective_knowledge: "សិស្សប្រាប់បានពីទម្រង់រូបរាង និងបញ្ចេញសំឡេងស្រៈ អ អា បានត្រឹមត្រូវតាមក្បួនខ្នាត។",
+            objective_skill: "សិស្សគូរ និងសរសេរស្រៈ អ អា លើក្ដារឆ្នួន និងក្នុងសៀវភៅបានត្រឹមត្រូវតាមលំដាប់លំដោយចលនាដៃ។",
+            objective_attitude: "បណ្ដុះស្មារតីស្រឡាញ់ការរៀនសូត្រអក្សរសាស្ត្រជាតិ និងមានវិន័យក្នុងការសរសេរ។",
+            materials_teacher: "សៀវភៅពុម្ពភាសាខ្មែរថ្នាក់ទី១, បណ្ណអក្សររូបភាពស្រៈ អ អា, វីដេអូចលនាសរសេរ, ដីសពណ៌។",
+            materials_student: "សៀវភៅពុម្ព, សៀវភៅសរសេរ, ក្ដារឆ្នួន, ហ្វឺត ឬដីសសរសេរ។",
+            step1_admin: {
+                teacher: "- ពិនិត្យអនាម័យ សណ្ដាប់ធ្នាប់ក្នុងថ្នាក់\n- ពិនិត្យវត្តមានសិស្ស\n- លើកទឹកចិត្ត និងរៀបចំឥរិយាបថសិស្សរៀនសូត្រ",
+                content: "រដ្ឋបាលថ្នាក់ (២ នាទី)",
+                student: "- ប្រធានថ្នាក់រាយការណ៍វត្តមាន\n- សិស្សទាំងអស់អង្គុយត្រង់ខ្លួន រៀបចំសម្ភារៈសិក្សាលើតុ"
+            },
+            step2_review: {
+                teacher: "- ឱ្យសិស្សច្រៀងចម្រៀងស្រៈខ្មែរ\n- បង្ហាញរូបភាព និងសួរសិស្សអំពីរូបភាពដើម្បីភ្ជាប់មេរៀន",
+                content: "រំលឹកមេរៀនចាស់ (៥ នាទី)",
+                student: "- សិស្សចូលរួមច្រៀង និងឆ្លើយសំណួររបស់គ្រូដោយភាពក្លៀវក្លា"
+            },
+            step3_new_lesson: {
+                teacher: "ក. បង្ហាញស្រៈ អ និង អា៖\n- គ្រូបិទបណ្ណអក្សរ ស្រៈ អ និង ស្រៈ អា លើក្ដារខៀន\n- គ្រូអានបញ្ចេញសំឡេងច្បាស់ៗជាគំរូ ៣ដង\n- ណែនាំសិស្សឱ្យអានតាម (ទាំងថ្នាក់ ក្រុម និងបុគ្គល)\n\nខ. បង្ហាញចលនាសរសេរ៖\n- គ្រូសរសេរគំរូស្រៈ អ អា លើក្ដារខៀនមួយជំហានៗ\n- ឱ្យសិស្សគូសចលនាសរសេរលើអាកាស\n- ឱ្យសិស្សសរសេរលើក្ដារឆ្នួន គ្រូដើរត្រួតពិនិត្យ និងកែលម្អ",
+                content: "មេរៀនថ្មី (២៥ នាទី)\nស្រៈ អ និង ស្រៈ អា\n- រូបរាងស្រៈ ៖ អ , អា\n- សំឡេង ៖ អ (អ) , អា (អា)\n- ចលនាសរសេរ ៖ ពីឆ្វេងទៅស្ដាំ និងពីលើចុះក្រោម",
+                student: "- សិស្សស្ដាប់ការបញ្ចេញសំឡេងរបស់គ្រូ\n- សិស្សអានស្រៈ អ អា ព្រមគ្នា ជាក្រុម និងម្នាក់ៗ\n- សិស្សគូសចលនាសរសេរលើអាកាសតាមគ្រូ\n- សិស្សអនុវត្តសរសេរលើក្ដារឆ្នួន និងលើកបង្ហាញគ្រូ"
+            },
+            step4_consolidation: {
+                teacher: "- លេងល្បែងល្បងប្រាជ្ញា៖ 'រកស្រៈ អ អា ក្នុងបណ្ណពាក្យ'\n- ហៅសិស្ស ២-៣ នាក់ ឡើងសរសេរស្រៈ អ អា លើក្ដារខៀន\n- វាយតម្លៃ និងផ្ដល់ពិន្ទុសរសើរ",
+                content: "ពង្រឹងចំណេះដឹង (៨ នាទី)",
+                student: "- សិស្សចូលរួមលេងល្បែងប្រកួតប្រជែងរកបណ្ណអក្សរ\n- សិស្សស្ម័គ្រចិត្តឡើងសរសេរលើក្ដារខៀន"
+            },
+            step5_homework: {
+                teacher: "- ណែនាំឱ្យសិស្សសរសេរស្រៈ អ អា ឱ្យបាន ៥ បន្ទាត់ក្នុងសៀវភៅ\n- ផ្ដាំផ្ញើឱ្យសិស្សជួយការងារឪពុកម្តាយ និងអានមេរៀនឡើងវិញនៅផ្ទះ",
+                content: "បណ្ដាំផ្ញើ និងកិច្ចការផ្ទះ (៥ នាទី)",
+                student: "- សិស្សកត់ត្រាកិច្ចការផ្ទះចូលក្នុងសៀវភៅ\n- ត្រៀមសម្អាតតុ និងរៀបចំកាតាបត្រឡប់ទៅផ្ទះ"
+            }
+        };
+
+        const generateLessonPlanWithAI = async (formData, uploadedFiles, apiKey, selectedModel = 'gemini-3.8-flash', onStatusUpdate = null) => {
+            const trimmedKey = (apiKey || '').trim();
+            if (!trimmedKey) {
+                throw new Error("សូមបញ្ចូល Gemini API Key របស់អ្នក!");
+            }
+
+            // Total payload size check for uploadedFiles
+            let totalPayloadBytes = 0;
+            if (uploadedFiles && uploadedFiles.length > 0) {
+                uploadedFiles.forEach(f => {
+                    if (f.data) totalPayloadBytes += f.data.length * 0.75;
+                });
+            }
+            if (totalPayloadBytes > 15 * 1024 * 1024) {
+                throw new Error(`ទំហំឯកសារ ឬរូបភាពសរុប (${(totalPayloadBytes / (1024 * 1024)).toFixed(1)}MB) ធំពេក។ Gemini API អនុញ្ញាតត្រឹមក្រោម 15MB ប៉ុណ្ណោះ។ សូមកាត់បន្ថយចំនួន ឬទំហំឯកសារ។`);
+            }
+
+            const promptText = `
+                Act as an expert Cambodian Pedagogy Specialist and Teacher Trainer. 
+                I will provide you with details, text content, and optionally images/PDFs of a lesson. 
+                Your task is to generate a comprehensive, standard MoEYS (Ministry of Education, Youth and Sport) lesson plan in Khmer language.
+                
+                Input Details:
+                - Subject: ${formData.subject || 'ភាសាខ្មែរ'}
+                - Grade: ${formData.grade || '១'}
+                - Lesson Title: ${formData.lessonTitle}
+                ${formData.subTitle ? `- Sub Title/Topic: ${formData.subTitle}` : ''}
+                - Duration: ${formData.duration || '៤៥ នាទី'}
+                - Date: ${formData.date || ''}
+                - Teacher Name: ${formData.teacherName || ''}
+                - Lesson Content/Text: "${formData.lessonText || ''}"
+
+                Guidelines for Output:
+                1. Language: MUST be entirely in natural, formal educational Khmer language without spelling mistakes.
+                2. Structure: Follow the strict MoEYS 5-step teaching methodology (៥ ជំហាន): ១.រដ្ឋបាលថ្នាក់, ២.រំលឹកមេរៀនចាស់/កែកិច្ចការចាស់, ៣.មេរៀនថ្មី, ៤.ពង្រឹងចំណេះដឹង, ៥.បណ្ដាំផ្ញើ/កិច្ចការផ្ទះ។
+                3. Objectives (វត្ថុបំណង - CRITICAL): MUST be highly accurate, SMART, and STRICTLY align with the specific Subject (${formData.subject}) and Lesson Title. Do NOT use generic or awkward phrasing.
+                   - ចំណេះដឹង (Knowledge): What students will know.
+                   - បំណិន (Skill): What students will do.
+                   - ឥរិយាបថ (Attitude): The values gained.
+                4. Step 3 Detail (ជំហានទី៣ មេរៀនថ្មី - CRITICAL): This step MUST be the longest and most detailed part of the lesson plan. Break down the teaching into specific pedagogical activities.
+                   - Teacher Activities (សកម្មភាពគ្រូ)
+                   - Lesson Content (ខ្លឹមសារមេរៀន): You MUST write the ACTUAL lesson content here (vocabulary words, reading texts, rules, formulas, etc.) extracted from the input.
+                   - Student Activities (សកម្មភាពសិស្ស)
+                5. Output MUST be valid JSON only. Escape all newlines inside string values using \\n.
+            `;
+
+            const parts = [{ text: promptText }];
+
+            if (uploadedFiles && uploadedFiles.length > 0) {
+                uploadedFiles.forEach(file => {
+                    if (file.data && file.mimeType) {
+                        parts.push({
+                            inlineData: {
+                                mimeType: file.mimeType,
+                                data: file.data
+                            }
+                        });
+                    }
+                });
+            }
+
+            const responseSchema = {
+                type: "OBJECT",
+                properties: {
+                    subject: { type: "STRING" },
+                    grade: { type: "STRING" },
+                    lesson_title: { type: "STRING" },
+                    sub_title: { type: "STRING" },
+                    duration: { type: "STRING" },
+                    date: { type: "STRING" },
+                    teacher_name: { type: "STRING" },
+                    objective_knowledge: { type: "STRING" },
+                    objective_skill: { type: "STRING" },
+                    objective_attitude: { type: "STRING" },
+                    materials_teacher: { type: "STRING" },
+                    materials_student: { type: "STRING" },
+                    step1_admin: {
+                        type: "OBJECT",
+                        properties: { teacher: { type: "STRING" }, content: { type: "STRING" }, student: { type: "STRING" } }
+                    },
+                    step2_review: {
+                        type: "OBJECT",
+                        properties: { teacher: { type: "STRING" }, content: { type: "STRING" }, student: { type: "STRING" } }
+                    },
+                    step3_new_lesson: {
+                        type: "OBJECT",
+                        properties: { teacher: { type: "STRING" }, content: { type: "STRING" }, student: { type: "STRING" } }
+                    },
+                    step4_consolidation: {
+                        type: "OBJECT",
+                        properties: { teacher: { type: "STRING" }, content: { type: "STRING" }, student: { type: "STRING" } }
+                    },
+                    step5_homework: {
+                        type: "OBJECT",
+                        properties: { teacher: { type: "STRING" }, content: { type: "STRING" }, student: { type: "STRING" } }
+                    }
+                },
+                required: ["subject", "grade", "lesson_title", "step1_admin", "step2_review", "step3_new_lesson", "step4_consolidation", "step5_homework"]
+            };
+
+            const payload = {
+                contents: [{ parts: parts }],
+                generationConfig: {
+                    temperature: 0.2,
+                    responseMimeType: "application/json",
+                    responseSchema: responseSchema
+                }
+            };
+
+            // Candidate models to try in sequence with automatic fallback
+            const highCapacityModels = [
+                'gemini-3.8-flash',
+                'gemini-3.7-flash',
+                'gemini-3.6-flash',
+                'gemini-3.1-flash-lite',
+                'gemini-2.5-flash',
+                'gemini-1.5-flash',
+                'gemini-3.5-flash'
+            ];
+            const candidateModels = [
+                selectedModel,
+                ...highCapacityModels
+            ].filter((val, idx, self) => val && self.indexOf(val) === idx);
+
+            let lastError = null;
+
+            for (let i = 0; i < candidateModels.length; i++) {
+                const currentModel = candidateModels[i];
+                if (onStatusUpdate) {
+                    onStatusUpdate(`កំពុងដំណើរការជាមួយ ${currentModel}${i > 0 ? ' (សាកល្បងម៉ូដែលបម្រុង)' : ''}...`);
+                }
+
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${trimmedKey}`;
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        let parsedErr = null;
+                        try { parsedErr = JSON.parse(errText); } catch (e) { }
+                        const errMessage = parsedErr?.error?.message || errText;
+                        const errStatus = response.status;
+
+                        // Fatal API key failure: don't retry other models
+                        if (errStatus === 400 && (errMessage.includes('API key not valid') || errMessage.includes('API_KEY_INVALID'))) {
+                            throw new Error(`API_KEY_INVALID: API Key មិនត្រឹមត្រូវទេ។ សូមពិនិត្យ និងចម្លង Gemini API Key ថ្មីពី Google AI Studio ដោយគ្មានចន្លោះដកឃ្លា។`);
+                        }
+
+                        // Permission denied
+                        if (errStatus === 403) {
+                            throw new Error(`PERMISSION_DENIED: API Key គ្មានសិទ្ធិចូលដំណើរការទេ (403 Forbidden)។ សូមពិនិត្យគណនី Google AI Studio។`);
+                        }
+
+                        // 404, 429, 503, 500: Try next fallback model
+                        if (errStatus === 404 || errStatus === 429 || errStatus === 503 || errStatus === 500) {
+                            console.warn(`Model ${currentModel} returned ${errStatus}: ${errMessage}. Trying fallback...`);
+                            lastError = new Error(`ម៉ូដែល ${currentModel} ឆ្លើយតប (${errStatus})៖ ${errMessage}`);
+                            // Wait a moment on high demand or rate limit before next try
+                            if (errStatus === 503 || errStatus === 429) {
+                                await new Promise(r => setTimeout(r, 600));
+                            }
+                            continue;
+                        }
+
+                        lastError = new Error(`កំហុស API (${errStatus}): ${errMessage}`);
+                        continue;
+                    }
+
+                    const result = await response.json();
+                    const candidate = result.candidates?.[0];
+
+                    if (!candidate || !candidate.content || !candidate.content.parts) {
+                        if (result.promptFeedback?.blockReason) {
+                            throw new Error(`មាតិកាត្រូវបានរារាំងដោយសុវត្ថិភាព (Safety Block): ${result.promptFeedback.blockReason}`);
+                        }
+                        if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+                            throw new Error(`AI បញ្ឈប់ការបង្កើតដោយសារមូលហេតុ៖ ${candidate.finishReason}`);
+                        }
+                        throw new Error('ពុំទទួលបានទិន្នន័យពី AI ទេ។ សូមសាកល្បងម្ដងទៀត។');
+                    }
+
+                    // Extract text part (skip thought scratchpad in Gemini 2.5/3.x)
+                    let textPart = candidate.content.parts.find(p => !p.thought && p.text && p.text.includes('{'))
+                        || candidate.content.parts.find(p => !p.thought && p.text)
+                        || candidate.content.parts[candidate.content.parts.length - 1];
+
+                    let jsonString = textPart?.text || '';
+                    if (!jsonString) {
+                        throw new Error('ចម្លើយដែលទទួលបានពី AI គឺទទេ!');
+                    }
+
+                    jsonString = jsonString.trim();
+                    if (jsonString.startsWith('```')) {
+                        jsonString = jsonString.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+                    }
+                    const firstBrace = jsonString.indexOf('{');
+                    const lastBrace = jsonString.lastIndexOf('}');
+                    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                        jsonString = jsonString.substring(firstBrace, lastBrace + 1);
+                    }
+                    jsonString = jsonString.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+
+                    const parsedData = JSON.parse(jsonString);
+                    return { data: parsedData, usedModel: currentModel };
+                } catch (err) {
+                    if (err.message.startsWith('API_KEY_INVALID') || err.message.startsWith('PERMISSION_DENIED')) {
+                        throw err;
+                    }
+                    lastError = err;
+                    console.warn(`Error generating with ${currentModel}:`, err);
+                }
+            }
+
+            throw lastError || new Error('មិនអាចទាញយកទិន្នន័យពីគ្រប់ម៉ូដែល AI ទាំងអស់បានទេ។ សូមពិនិត្យ API Key និងការតភ្ជាប់អ៊ីនធឺណិត។');
+        };
+
+        const toKhmerNumeral = (num) => {
+            const khmerDigits = ['០', '១', '២', '៣', '៤', '៥', '៦', '៧', '៨', '៩'];
+            return num.toString().split('').map(digit => khmerDigits[digit] || digit).join('');
+        };
+
+        const DocumentPreview = ({ plan, contentRef }) => {
+            if (!plan) return (
+                <div className="flex flex-col items-center justify-center h-full text-gray-400 py-20">
+                    <i className="fa-solid fa-file-signature text-6xl mb-4"></i>
+                    <p className="text-lg">កិច្ចតែងការនឹងបង្ហាញនៅទីនេះ...</p>
+                </div>
+            );
+
+            return (
+                <div ref={contentRef} id="export-content" className="a4-paper text-[13px] text-gray-900 leading-[1.85] font-battambang p-[1.5cm] bg-white">
+                    <div className="text-center mb-6">
+                        <h1 className="font-moul text-[16px] mb-2 leading-[2]">កិច្ចតែងការបង្រៀន</h1>
+                    </div>
+
+                    <table className="w-full mb-4 font-bold leading-[1.85]" style={{ width: '100%', border: 'none', borderCollapse: 'collapse', marginTop: '0', marginBottom: '16px' }}>
+                        <tbody>
+                            <tr>
+                                <td style={{ width: '60%', border: 'none', padding: '0', verticalAlign: 'top' }}>
+                                    <p style={{ margin: '0' }}>កាលបរិច្ឆេទ ៖ {plan.date || '.....................................................'}</p>
+                                    <p style={{ margin: '4px 0 0 0' }}>មុខវិជ្ជា ៖ {plan.subject}</p>
+                                    <p style={{ margin: '4px 0 0 0' }}>{plan.lesson_title}</p>
+                                    {plan.sub_title && <p style={{ margin: '4px 0 0 0' }}>ចំណងជើងរង ៖ {cleanText(plan.sub_title)}</p>}
+                                    <p style={{ margin: '4px 0 0 0' }}>រយៈពេល ៖ {plan.duration}</p>
+                                </td>
+                                <td style={{ width: '40%', border: 'none', padding: '0', verticalAlign: 'top', textAlign: 'right' }}>
+                                    <p style={{ margin: '0' }}>ថ្នាក់ទី ៖ {plan.grade}</p>
+                                    <p style={{ margin: '4px 0 0 0' }}>បង្រៀនដោយ ៖ {plan.teacher_name || '.................................'}</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div className="mb-4">
+                        <h2 className="font-bold text-[14px] mb-1 leading-[2]">១. វត្ថុបំណង</h2>
+                        <ul className="list-disc pl-6 space-y-1 m-0 leading-[1.85]">
+                            <li><span className="font-bold">វិជ្ជាសម្បទា ៖</span> {cleanText(plan.objective_knowledge)}</li>
+                            <li><span className="font-bold">បំណិនសម្បទា ៖</span> {cleanText(plan.objective_skill)}</li>
+                            <li><span className="font-bold">ចរិយាសម្បទា ៖</span> {cleanText(plan.objective_attitude)}</li>
+                        </ul>
+                    </div>
+
+                    <div className="mb-4">
+                        <h2 className="font-bold text-[14px] mb-1 leading-[2]">២. សម្ភារៈឧបទេស</h2>
+                        <ul className="list-disc pl-6 space-y-1 m-0 leading-[1.85]">
+                            <li><span className="font-bold">គោលវិធី ៖</span> សិស្សមជ្ឈមណ្ឌល</li>
+                            <li><span className="font-bold">សម្ភារៈគ្រូ ៖</span> {cleanText(plan.materials_teacher)}</li>
+                            <li><span className="font-bold">សម្ភារៈសិស្ស ៖</span> {cleanText(plan.materials_student)}</li>
+                        </ul>
+                    </div>
+
+                    <div>
+                        <h2 className="font-bold text-[14px] mb-1 leading-[2]">៣. ដំណើរការបង្រៀន</h2>
+                        <table className="lesson-table w-full border-collapse border border-black" style={{ tableLayout: 'fixed', width: '100%' }}>
+                            <colgroup>
+                                <col style={{ width: '30%' }} />
+                                <col style={{ width: '40%' }} />
+                                <col style={{ width: '30%' }} />
+                            </colgroup>
+                            <thead>
+                                <tr >
+                                    <th className="border border-black p-2.5 w-[30%]" style={{ width: '30%' }}>សកម្មភាពគ្រូ</th>
+                                    <th className="border border-black p-2.5 w-[40%]" style={{ width: '40%' }}>ខ្លឹមសារមេរៀន</th>
+                                    <th className="border border-black p-2.5 w-[30%]" style={{ width: '30%' }}>សកម្មភាពសិស្ស</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr >
+                                    <td className="border border-black p-2.5 whitespace-pre-wrap leading-[1.85]" style={{ width: '30%' }}>{cleanText(plan.step1_admin?.teacher)}</td>
+                                    <td className="border border-black p-2.5 text-center leading-[1.85]" style={{ width: '40%' }}>
+                                        <div className="font-moul text-center block w-full mb-1" style={{ textAlign: 'center' }}>ជំហានទី ១</div>
+                                        <span className="font-normal whitespace-pre-wrap block text-left leading-[1.85]">{cleanText(plan.step1_admin?.content)}</span>
+                                    </td>
+                                    <td className="border border-black p-2.5 whitespace-pre-wrap leading-[1.85]" style={{ width: '30%' }}>{cleanText(plan.step1_admin?.student)}</td>
+                                </tr>
+                                <tr >
+                                    <td className="border border-black p-2.5 whitespace-pre-wrap leading-[1.85]" style={{ width: '30%' }}>{cleanText(plan.step2_review?.teacher)}</td>
+                                    <td className="border border-black p-2.5 text-center leading-[1.85]" style={{ width: '40%' }}>
+                                        <div className="font-moul text-center block w-full mb-1" style={{ textAlign: 'center' }}>ជំហានទី ២</div>
+                                        <span className="whitespace-pre-wrap block text-left leading-[1.85]">{cleanText(plan.step2_review?.content)}</span>
+                                    </td>
+                                    <td className="border border-black p-2.5 whitespace-pre-wrap leading-[1.85]" style={{ width: '30%' }}>{cleanText(plan.step2_review?.student)}</td>
+                                </tr>
+                                <tr >
+                                    <td className="border border-black p-2.5 whitespace-pre-wrap leading-[1.85]" style={{ width: '30%' }}>{cleanText(plan.step3_new_lesson?.teacher)}</td>
+                                    <td className="border border-black p-2.5 text-center leading-[1.85]" style={{ width: '40%' }}>
+                                        <div className="font-moul text-center block w-full mb-1" style={{ textAlign: 'center' }}>ជំហានទី ៣</div>
+                                        <div className="whitespace-pre-wrap text-left block w-full leading-[1.85]">
+                                            {cleanText(plan.step3_new_lesson?.content)}
+                                        </div>
+                                    </td>
+                                    <td className="border border-black p-2.5 whitespace-pre-wrap leading-[1.85]" style={{ width: '30%' }}>{cleanText(plan.step3_new_lesson?.student)}</td>
+                                </tr>
+                                <tr >
+                                    <td className="border border-black p-2.5 whitespace-pre-wrap leading-[1.85]" style={{ width: '30%' }}>{cleanText(plan.step4_consolidation?.teacher)}</td>
+                                    <td className="border border-black p-2.5 text-center leading-[1.85]" style={{ width: '40%' }}>
+                                        <div className="font-moul text-center block w-full mb-1" style={{ textAlign: 'center' }}>ជំហានទី ៤</div>
+                                        <div className="whitespace-pre-wrap text-left block w-full leading-[1.85]">
+                                            {cleanText(plan.step4_consolidation?.content)}
+                                        </div>
+                                    </td>
+                                    <td className="border border-black p-2.5 whitespace-pre-wrap leading-[1.85]" style={{ width: '30%' }}>{cleanText(plan.step4_consolidation?.student)}</td>
+                                </tr>
+                                <tr >
+                                    <td className="border border-black p-2.5 whitespace-pre-wrap leading-[1.85]" style={{ width: '30%' }}>{cleanText(plan.step5_homework?.teacher)}</td>
+                                    <td className="border border-black p-2.5 text-center leading-[1.85]" style={{ width: '40%' }}>
+                                        <div className="font-moul text-center block w-full mb-1" style={{ textAlign: 'center' }}>ជំហានទី ៥</div>
+                                        <span className="whitespace-pre-wrap block text-left leading-[1.85]">{cleanText(plan.step5_homework?.content)}</span>
+                                    </td>
+                                    <td className="border border-black p-2.5 whitespace-pre-wrap leading-[1.85]" style={{ width: '30%' }}>{cleanText(plan.step5_homework?.student)}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [apiKey, setApiKey] = useState(() => localStorage.getItem('geminiApiKey') || '');
+            const [selectedModel, setSelectedModel] = useState(() => {
+                const saved = localStorage.getItem('geminiModel');
+                if (!saved || saved === 'gemini-3.5-flash' || saved === 'gemini-2.5-flash' || saved === 'gemini-2.0-flash') {
+                    localStorage.setItem('geminiModel', 'gemini-3.8-flash');
+                    return 'gemini-3.8-flash';
+                }
+                return saved;
+            });
+            const [showApiKey, setShowApiKey] = useState(false);
+            const [isValidatingKey, setIsValidatingKey] = useState(false);
+            const [keyStatus, setKeyStatus] = useState(null);
+            const [generatingStatus, setGeneratingStatus] = useState('');
+            const [errorDetails, setErrorDetails] = useState('');
+            const [usedModelName, setUsedModelName] = useState('');
+            const [formData, setFormData] = useState({
+                subject: 'ភាសាខ្មែរ',
+                grade: '១',
+                lessonTitle: '',
+                subTitle: '',
+                duration: '៤៥ នាទី',
+                date: '',
+                teacherName: '',
+                lessonText: ''
+            });
+            const [uploadedFiles, setUploadedFiles] = useState([]);
+            const [isGenerating, setIsGenerating] = useState(false);
+            const [generatedPlan, setGeneratedPlan] = useState(null);
+            const [errorMsg, setErrorMsg] = useState('');
+            const fileInputRef = useRef(null);
+            const documentRef = useRef(null);
+
+            useEffect(() => {
+                const today = new Date();
+                const khmerMonths = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'];
+                const day = toKhmerNumeral(today.getDate());
+                const month = khmerMonths[today.getMonth()];
+                const year = toKhmerNumeral(today.getFullYear());
+                const formattedDate = `ថ្ងៃទី ${day} ខែ ${month} ឆ្នាំ ${year}`;
+                setFormData(prev => ({ ...prev, date: formattedDate }));
+            }, []);
+
+            const handleInputChange = (e) => {
+                const { name, value } = e.target;
+                setFormData(prev => ({ ...prev, [name]: value }));
+            };
+
+            const handleFileUpload = async (e) => {
+                const files = Array.from(e.target.files);
+                if (files.length === 0) return;
+
+                setErrorMsg('');
+                setErrorDetails('');
+                const validMimes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+                const maxFileSize = 10 * 1024 * 1024; // 10MB per file
+
+                try {
+                    const newFiles = [];
+                    for (const file of files) {
+                        const mime = getFileMimeType(file);
+                        if (!validMimes.includes(mime)) {
+                            setErrorMsg(`ឯកសារ "${file.name}" មិនគាំទ្រទេ។ សូមបញ្ចូលរូបភាព (JPG, PNG, WEBP) ឬឯកសារ PDF។`);
+                            continue;
+                        }
+                        if (file.size > maxFileSize) {
+                            setErrorMsg(`ឯកសារ "${file.name}" មានទំហំធំពេក (${(file.size / (1024 * 1024)).toFixed(1)}MB)។ ទំហំអតិបរមាគឺ 10MB ក្នុងមួយឯកសារ។`);
+                            continue;
+                        }
+
+                        if (mime.startsWith('image/')) {
+                            const compressed = await compressImage(file);
+                            newFiles.push(compressed);
+                        } else {
+                            const base64Data = await new Promise((resolve, reject) => {
+                                const reader = new FileReader();
+                                reader.onload = () => resolve(reader.result.split(',')[1]);
+                                reader.onerror = reject;
+                                reader.readAsDataURL(file);
+                            });
+                            newFiles.push({
+                                name: file.name,
+                                mimeType: mime,
+                                data: base64Data,
+                                previewUrl: null
+                            });
+                        }
+                    }
+
+                    setUploadedFiles(prev => [...prev, ...newFiles]);
+                } catch (err) {
+                    console.error("Upload error:", err);
+                    setErrorMsg('មានបញ្ហាក្នុងការអានឯកសារ។ សូមសាកល្បងម្ដងទៀត។');
+                } finally {
+                    if (fileInputRef.current) {
+                        fileInputRef.current.value = '';
+                    }
+                }
+            };
+
+            const removeFile = (indexToRemove) => {
+                setUploadedFiles(prev => prev.filter((_, index) => index !== indexToRemove));
+            };
+
+            const handleTestApiKey = async () => {
+                const trimmedKey = (apiKey || '').trim();
+                if (!trimmedKey) {
+                    setKeyStatus({ success: false, message: 'សូមបញ្ចូល Gemini API Key ជាមុនសិន!' });
+                    return;
+                }
+                setIsValidatingKey(true);
+                setKeyStatus(null);
+                try {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${trimmedKey}`);
+                    if (!res.ok) {
+                        const err = await res.text();
+                        let msg = 'API Key មិនត្រឹមត្រូវ!';
+                        try {
+                            const json = JSON.parse(err);
+                            msg = json?.error?.message || msg;
+                        } catch (e) { }
+                        setKeyStatus({ success: false, message: `បរាជ័យ (${res.status})៖ ${msg}` });
+                    } else {
+                        const data = await res.json();
+                        const modelNames = (data.models || [])
+                            .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+                            .map(m => m.name.replace('models/', ''));
+                        setKeyStatus({
+                            success: true,
+                            message: '✅ API Key ត្រឹមត្រូវ និងដំណើរការល្អ!',
+                            models: modelNames
+                        });
+                    }
+                } catch (e) {
+                    setKeyStatus({ success: false, message: `មិនអាចតភ្ជាប់ទៅកាន់ Google API បានទេ៖ ${e.message}` });
+                } finally {
+                    setIsValidatingKey(false);
+                }
+            };
+
+            const handleLoadDemo = () => {
+                setFormData({
+                    subject: SAMPLE_DEMO_PLAN.subject,
+                    grade: SAMPLE_DEMO_PLAN.grade,
+                    lessonTitle: SAMPLE_DEMO_PLAN.lesson_title,
+                    subTitle: SAMPLE_DEMO_PLAN.sub_title,
+                    duration: SAMPLE_DEMO_PLAN.duration,
+                    date: SAMPLE_DEMO_PLAN.date,
+                    teacherName: SAMPLE_DEMO_PLAN.teacher_name,
+                    lessonText: "មេរៀនស្រៈ អ អា សម្រាប់បង្រៀនសិស្សថ្នាក់ទី១ ដោយផ្តោតលើការបញ្ចេញសំឡេង និងចលនាសរសេរ..."
+                });
+                setGeneratedPlan(SAMPLE_DEMO_PLAN);
+                setUsedModelName('Demo (គំរូសាកល្បង)');
+                setErrorMsg('');
+                setErrorDetails('');
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+
+                const trimmedKey = (apiKey || '').trim();
+                if (!trimmedKey) {
+                    setErrorMsg('សូមបញ្ចូល Gemini API Key របស់អ្នកជាមុនសិន!');
+                    setErrorDetails('');
+                    return;
+                }
+
+                if (!formData.lessonTitle || !formData.lessonTitle.trim()) {
+                    setErrorMsg('សូមបំពេញ ចំណងជើងមេរៀន ជាមុនសិន!');
+                    setErrorDetails('');
+                    return;
+                }
+
+                setErrorMsg('');
+                setErrorDetails('');
+                setIsGenerating(true);
+                setGeneratingStatus('កំពុងចាប់ផ្ដើមដំណើរការ...');
+
+                try {
+                    const result = await generateLessonPlanWithAI(
+                        formData,
+                        uploadedFiles,
+                        trimmedKey,
+                        selectedModel,
+                        (status) => setGeneratingStatus(status)
+                    );
+                    setGeneratedPlan(result.data);
+                    setUsedModelName(result.usedModel);
+                } catch (err) {
+                    console.error("Generation Error:", err);
+                    let userFriendlyMsg = 'មានបញ្ហាក្នុងការបង្កើតកិច្ចតែងការ។';
+                    const msg = err.message || '';
+
+                    if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
+                        userFriendlyMsg = 'API Key មិនត្រឹមត្រូវទេ។ សូមពិនិត្យ និងចម្លង Gemini API Key ឱ្យបានត្រឹមត្រូវពី Google AI Studio (គ្មានចន្លោះដកឃ្លា)។';
+                    } else if (msg.includes('PERMISSION_DENIED') || msg.includes('403')) {
+                        userFriendlyMsg = 'API Key គ្មានសិទ្ធិចូលប្រើប្រាស់ ឬត្រូវបានបិទ (403 Forbidden)។';
+                    } else if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
+                        userFriendlyMsg = 'អ្នកបានប្រើប្រាស់អស់កូតាឥតគិតថ្លៃ (Quota Exceeded) របស់ Gemini API Key នេះហើយ។ សូមរង់ចាំ ១ ទៅ ២ នាទី រួចសាកល្បងម្ដងទៀត ឬប្ដូរម៉ូដែល។';
+                    } else if (msg.includes('503') || msg.includes('high demand') || msg.includes('Spikes in demand')) {
+                        userFriendlyMsg = 'ម៉ូដែល gemini-3.5-flash កំពុងមានអ្នកប្រើប្រាស់ច្រើនលើសចំណុះ (503 High Demand)។ សូមចុចប៊ូតុងខាងក្រោមដើម្បីប្ដូរទៅប្រើ Gemini 3.8 Flash ដែលដំណើរការលឿន និងមានសមត្ថភាពខ្ពស់។';
+                    } else if (msg.includes('15MB') || msg.includes('ទំហំឯកសារ')) {
+                        userFriendlyMsg = msg;
+                    } else if (msg.includes('Safety Block') || msg.includes('សុវត្ថិភាព')) {
+                        userFriendlyMsg = msg;
+                    } else {
+                        userFriendlyMsg = `មានបញ្ហាក្នុងការបង្កើតកិច្ចតែងការ៖ ${msg.split('\n')[0]}`;
+                    }
+
+                    setErrorMsg(userFriendlyMsg);
+                    setErrorDetails(err.stack || msg);
+                } finally {
+                    setIsGenerating(false);
+                    setGeneratingStatus('');
+                }
+            };
+
+            const handlePrint = () => {
+                window.print();
+            };
+
+
+
+            const exportToWord = () => {
+                if (!generatedPlan) return;
+
+                const plan = generatedPlan;
+
+                // Helper to format text with line breaks for HTML/Word
+                const formatText = (txt) => {
+                    if (!txt) return '';
+                    const cleaned = cleanText(txt);
+                    return cleaned.replace(/\n/g, '<br/>');
+                };
+
+                const renderStepRow = (stepTitle, stepObj) => `
+                    <tr style="page-break-inside: auto; mso-break-inside: auto;">
+                        <td width="30%" style="width: 30%; border: 1.0pt solid windowtext; mso-border-alt: solid windowtext .5pt; vertical-align: top; padding: 6pt; font-family: 'Khmer OS Battambang', 'Battambang', sans-serif; font-size: 10.5pt; line-height: 1.6;">
+                            ${formatText(stepObj?.teacher)}
+                        </td>
+                        <td width="40%" style="width: 40%; border: 1.0pt solid windowtext; mso-border-alt: solid windowtext .5pt; vertical-align: top; padding: 6pt; font-family: 'Khmer OS Battambang', 'Battambang', sans-serif; font-size: 10.5pt; line-height: 1.6;">
+                            <div style="font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Moul', cursive; text-align: center; font-size: 11pt; font-weight: normal; margin-bottom: 4pt;">${stepTitle}</div>
+                            <div>${formatText(stepObj?.content)}</div>
+                        </td>
+                        <td width="30%" style="width: 30%; border: 1.0pt solid windowtext; mso-border-alt: solid windowtext .5pt; vertical-align: top; padding: 6pt; font-family: 'Khmer OS Battambang', 'Battambang', sans-serif; font-size: 10.5pt; line-height: 1.6;">
+                            ${formatText(stepObj?.student)}
+                        </td>
+                    </tr>
+                `;
+
+                const docContent = `
+                    <div style="text-align: center; margin-bottom: 14pt;">
+                        <h1 style="font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Moul', cursive; font-size: 14pt; font-weight: normal; margin: 0; line-height: 1.8;">កិច្ចតែងការបង្រៀន</h1>
+                    </div>
+
+                    <table class="meta-table" border="0" cellspacing="0" cellpadding="0" style="width: 100%; border: none; border-collapse: collapse; mso-border-alt: none; margin-bottom: 12pt;">
+                        <tr>
+                            <td style="width: 60%; border: none; mso-border-alt: none; padding: 2pt 0; vertical-align: top; font-family: 'Khmer OS Battambang', 'Battambang', sans-serif; font-size: 11pt; font-weight: bold; line-height: 1.6;">
+                                <div style="margin: 0 0 3pt 0;">កាលបរិច្ឆេទ ៖ ${plan.date || '.....................................................'}</div>
+                                <div style="margin: 0 0 3pt 0;">មុខវិជ្ជា ៖ ${plan.subject}</div>
+                                <div style="margin: 0 0 3pt 0;">${plan.lesson_title}</div>
+                                ${plan.sub_title ? `<div style="margin: 0 0 3pt 0;">ចំណងជើងរង ៖ ${cleanText(plan.sub_title)}</div>` : ''}
+                                <div style="margin: 0;">រយៈពេល ៖ ${plan.duration}</div>
+                            </td>
+                            <td style="width: 40%; border: none; mso-border-alt: none; padding: 2pt 0; vertical-align: top; text-align: right; font-family: 'Khmer OS Battambang', 'Battambang', sans-serif; font-size: 11pt; font-weight: bold; line-height: 1.6;">
+                                <div style="margin: 0 0 3pt 0;">ថ្នាក់ទី ៖ ${plan.grade}</div>
+                                <div style="margin: 0;">បង្រៀនដោយ ៖ ${plan.teacher_name || '.................................'}</div>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <div style="margin-bottom: 12pt;">
+                        <h2 style="font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Moul', cursive; font-size: 11.5pt; font-weight: bold; margin: 0 0 4pt 0; line-height: 1.8;">១. វត្ថុបំណង</h2>
+                        <ul style="margin: 0; padding-left: 20pt;">
+                            <li style="margin-bottom: 3pt; font-family: 'Khmer OS Battambang', 'Battambang', sans-serif; font-size: 11pt; line-height: 1.6;"><span style="font-weight: bold;">វិជ្ជាសម្បទា ៖</span> ${formatText(plan.objective_knowledge)}</li>
+                            <li style="margin-bottom: 3pt; font-family: 'Khmer OS Battambang', 'Battambang', sans-serif; font-size: 11pt; line-height: 1.6;"><span style="font-weight: bold;">បំណិនសម្បទា ៖</span> ${formatText(plan.objective_skill)}</li>
+                            <li style="margin-bottom: 3pt; font-family: 'Khmer OS Battambang', 'Battambang', sans-serif; font-size: 11pt; line-height: 1.6;"><span style="font-weight: bold;">ចរិយាសម្បទា ៖</span> ${formatText(plan.objective_attitude)}</li>
+                        </ul>
+                    </div>
+
+                    <div style="margin-bottom: 12pt;">
+                        <h2 style="font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Moul', cursive; font-size: 11.5pt; font-weight: bold; margin: 0 0 4pt 0; line-height: 1.8;">២. សម្ភារៈឧបទេស</h2>
+                        <ul style="margin: 0; padding-left: 20pt;">
+                            <li style="margin-bottom: 3pt; font-family: 'Khmer OS Battambang', 'Battambang', sans-serif; font-size: 11pt; line-height: 1.6;"><span style="font-weight: bold;">គោលវិធី ៖</span> សិស្សមជ្ឈមណ្ឌល</li>
+                            <li style="margin-bottom: 3pt; font-family: 'Khmer OS Battambang', 'Battambang', sans-serif; font-size: 11pt; line-height: 1.6;"><span style="font-weight: bold;">សម្ភារៈគ្រូ ៖</span> ${formatText(plan.materials_teacher)}</li>
+                            <li style="margin-bottom: 3pt; font-family: 'Khmer OS Battambang', 'Battambang', sans-serif; font-size: 11pt; line-height: 1.6;"><span style="font-weight: bold;">សម្ភារៈសិស្ស ៖</span> ${formatText(plan.materials_student)}</li>
+                        </ul>
+                    </div>
+
+                    <div>
+                        <h2 style="font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Moul', cursive; font-size: 11.5pt; font-weight: bold; margin: 0 0 6pt 0; line-height: 1.8;">៣. ដំណើរការបង្រៀន</h2>
+                        <table class="lesson-table" border="1" cellspacing="0" cellpadding="6" style="width: 100%; border-collapse: collapse; border: 1.0pt solid windowtext; mso-border-alt: solid windowtext .5pt; mso-table-layout-alt: fixed; table-layout: fixed; word-wrap: break-word;">
+                            <thead>
+                                <tr style="background-color: #f2f2f2; mso-yfti-firstrow: yes; mso-yfti-header: yes; page-break-inside: avoid;">
+                                    <th width="30%" style="width: 30%; border: 1.0pt solid windowtext; mso-border-alt: solid windowtext .5pt; background-color: #f2f2f2; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Moul', cursive; font-size: 11pt; font-weight: normal; text-align: center; padding: 6pt; vertical-align: middle;">សកម្មភាពគ្រូ</th>
+                                    <th width="40%" style="width: 40%; border: 1.0pt solid windowtext; mso-border-alt: solid windowtext .5pt; background-color: #f2f2f2; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Moul', cursive; font-size: 11pt; font-weight: normal; text-align: center; padding: 6pt; vertical-align: middle;">ខ្លឹមសារមេរៀន</th>
+                                    <th width="30%" style="width: 30%; border: 1.0pt solid windowtext; mso-border-alt: solid windowtext .5pt; background-color: #f2f2f2; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Moul', cursive; font-size: 11pt; font-weight: normal; text-align: center; padding: 6pt; vertical-align: middle;">សកម្មភាពសិស្ស</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${renderStepRow('ជំហានទី ១', plan.step1_admin)}
+                                ${renderStepRow('ជំហានទី ២', plan.step2_review)}
+                                ${renderStepRow('ជំហានទី ៣', plan.step3_new_lesson)}
+                                ${renderStepRow('ជំហានទី ៤', plan.step4_consolidation)}
+                                ${renderStepRow('ជំហានទី ៥', plan.step5_homework)}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+
+                const preHtml = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+                <head>
+                <meta charset='utf-8'>
+                <title>Lesson Plan</title>
+                <!--[if gte mso 9]>
+                <xml>
+                <w:WordDocument>
+                <w:View>Print</w:View>
+                <w:Zoom>100</w:Zoom>
+                <w:DoNotOptimizeForBrowser/>
+                <w:Compatibility>
+                  <w:BreakWrappedTables/>
+                  <w:SnapToGridInCell/>
+                  <w:WrapTextWithPunct/>
+                  <w:UseAsianBreakRules/>
+                </w:Compatibility>
+                </w:WordDocument>
+                </xml>
+                <![endif]-->
+                <style>
+                @page WordSection1 {
+                    size: 21.0cm 29.7cm;
+                    margin: 1.5cm 1.5cm 1.5cm 1.5cm;
+                    mso-header-margin: 36.0pt;
+                    mso-footer-margin: 36.0pt;
+                    mso-paper-source: 0;
+                }
+                div.WordSection1 { 
+                    page: WordSection1; 
+                }
+                body { 
+                    font-family: 'Khmer OS Battambang', 'Battambang', Arial, sans-serif; 
+                    font-size: 11pt; 
+                    line-height: 1.6;
+                    color: #000000;
+                }
+                p, div, span, li {
+                    font-family: 'Khmer OS Battambang', 'Battambang', Arial, sans-serif;
+                    line-height: 1.6;
+                }
+                h1, .font-moul {
+                    font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Moul', cursive;
+                    font-weight: normal;
+                }
+                table.meta-table { 
+                    border-collapse: collapse !important; 
+                    width: 100% !important; 
+                    border: none !important;
+                    mso-border-alt: none !important;
+                    margin-top: 0 !important;
+                    margin-bottom: 12pt !important;
+                }
+                table.meta-table td { 
+                    border: none !important; 
+                    mso-border-alt: none !important;
+                    padding: 2pt 0 !important;
+                }
+                table.lesson-table { 
+                    border-collapse: collapse !important; 
+                    border-spacing: 0 !important;
+                    mso-table-layout-alt: fixed !important;
+                    width: 100% !important; 
+                    table-layout: fixed !important; 
+                    word-wrap: break-word !important; 
+                    margin-top: 6pt !important; 
+                    border: 1.0pt solid windowtext !important;
+                    mso-border-alt: solid windowtext .5pt !important;
+                }
+                table.lesson-table th, table.lesson-table td { 
+                    border: 1.0pt solid windowtext !important; 
+                    mso-border-alt: solid windowtext .5pt !important;
+                    padding: 6pt 6pt !important; 
+                    vertical-align: top !important; 
+                    line-height: 1.6 !important; 
+                    word-break: break-word !important;
+                    overflow-wrap: break-word !important;
+                }
+                table.lesson-table th { 
+                    font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Moul', cursive !important; 
+                    text-align: center !important; 
+                    background-color: #f2f2f2 !important; 
+                    line-height: 1.8 !important; 
+                    font-weight: normal !important;
+                }
+                h1, h2 { 
+                    font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Moul', cursive !important; 
+                    line-height: 1.8 !important; 
+                }
+                ul { 
+                    margin: 4pt 0 8pt 0 !important; 
+                    padding-left: 20pt !important; 
+                }
+                li { 
+                    line-height: 1.6 !important; 
+                }
+                thead { 
+                    display: table-header-group !important; 
+                }
+                thead tr {
+                    mso-yfti-firstrow: yes !important;
+                    mso-yfti-header: yes !important;
+                }
+                tr { 
+                    page-break-inside: auto !important; 
+                    mso-break-inside: auto !important; 
+                    break-inside: auto !important; 
+                }
+                </style></head><body><div class="WordSection1">`;
+                const postHtml = "</div></body></html>";
+
+                const fullHtml = preHtml + docContent + postHtml;
+                const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `កិច្ចតែងការ_${formData.subject}_ថ្នាក់ទី${formData.grade}.doc`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col md:flex-row">
+                    <div className="w-full md:w-1/3 bg-white p-6 shadow-lg z-10 overflow-y-auto h-screen no-print border-r border-gray-200">
+                        <div className="mb-4">
+                            <a
+                                href="../../index.html"
+                                className="inline-flex items-center gap-2 px-3.5 py-2 bg-gray-100 hover:bg-blue-600 hover:text-white text-gray-700 font-medium rounded-xl text-sm transition-all duration-200 border border-gray-200 shadow-sm group"
+                            >
+                                <i className="fa-solid fa-arrow-left transition-transform group-hover:-translate-x-1"></i>
+                                <span>ត្រឡប់ទៅទំព័រដើម</span>
+                            </a>
+                        </div>
+
+                        <div className="flex items-center gap-3 mb-6 border-b pb-4">
+                            <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white text-xl shadow">
+                                <i className="fa-solid fa-graduation-cap"></i>
+                            </div>
+                            <div>
+                                <h1 className="font-moul text-blue-800 text-lg leading-tight">AI កិច្ចតែងការ</h1>
+                                <p className="text-gray-500 text-xs mt-1">ជំនួយការគ្រូបង្រៀនកម្ពុជា</p>
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="space-y-4 pb-10">
+                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-2.5">
+                                <div>
+                                    <div className="flex justify-between items-center mb-1">
+                                        <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                                            <i className="fa-solid fa-key text-blue-600"></i> Gemini API Key <span className="text-red-500">*</span>
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowApiKey(!showApiKey)}
+                                            className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1"
+                                        >
+                                            <i className={`fa-solid ${showApiKey ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                                            {showApiKey ? 'លាក់' : 'បង្ហាញ'}
+                                        </button>
+                                    </div>
+                                    <input
+                                        type={showApiKey ? 'text' : 'password'}
+                                        value={apiKey}
+                                        onChange={(e) => {
+                                            const val = e.target.value.trim();
+                                            setApiKey(val);
+                                            localStorage.setItem('geminiApiKey', val);
+                                            setKeyStatus(null);
+                                        }}
+                                        placeholder="បិទភ្ជាប់ (Paste) Gemini API Key របស់អ្នកនៅទីនេះ..."
+                                        className="w-full border border-blue-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none text-xs font-mono bg-white shadow-sm"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-blue-900 mb-1">
+                                        <i className="fa-solid fa-microchip text-blue-600"></i> AI Model (គំរូបញ្ញាសិប្បនិម្មិត)
+                                    </label>
+                                    <select
+                                        value={selectedModel}
+                                        onChange={(e) => {
+                                            setSelectedModel(e.target.value);
+                                            localStorage.setItem('geminiModel', e.target.value);
+                                        }}
+                                        className="w-full border border-blue-300 rounded-lg p-2 text-xs font-battambang bg-white focus:ring-2 focus:ring-blue-500 outline-none shadow-sm cursor-pointer"
+                                    >
+                                        {AVAILABLE_MODELS.map(m => (
+                                            <option key={m.id} value={m.id}>{m.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={handleTestApiKey}
+                                        disabled={isValidatingKey || !apiKey.trim()}
+                                        className="text-xs px-2.5 py-1.5 bg-white border border-blue-300 hover:border-blue-400 text-blue-700 font-bold rounded-lg shadow-sm transition flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-50"
+                                    >
+                                        {isValidatingKey ? (
+                                            <><div className="loader w-3 h-3 border-2 border-blue-600 border-t-transparent"></div> កំពុងតេស្ត...</>
+                                        ) : (
+                                            <><i className="fa-solid fa-circle-check text-green-600"></i> តេស្ត Key</>
+                                        )}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleLoadDemo}
+                                        className="text-xs px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-900 font-bold rounded-lg shadow-sm transition flex items-center gap-1.5"
+                                    >
+                                        <i className="fa-solid fa-wand-magic-sparkles text-amber-700"></i> មើលគំរូសាកល្បង (Demo)
+                                    </button>
+                                </div>
+
+                                {keyStatus && (
+                                    <div className={`p-2.5 rounded-lg text-xs flex items-start gap-2 ${keyStatus.success ? 'bg-green-100 text-green-800 border border-green-300' : 'bg-red-100 text-red-800 border border-red-300'}`}>
+                                        <i className={`fa-solid ${keyStatus.success ? 'fa-circle-check text-green-600' : 'fa-circle-exclamation text-red-600'} mt-0.5`}></i>
+                                        <div className="space-y-1">
+                                            <div className="font-bold">{keyStatus.message}</div>
+                                            {keyStatus.models && keyStatus.models.length > 0 && (
+                                                <div className="text-[10px] text-gray-700">
+                                                    ម៉ូដែលដំណើរការ៖ <span className="font-mono">{keyStatus.models.slice(0, 3).join(', ')}...</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <p className="text-[10px] text-blue-600 flex items-center gap-1">
+                                    <i className="fa-solid fa-circle-info"></i>
+                                    <span>ទាញយក Key ឥតគិតថ្លៃនៅ <a href="https://aistudio.google.com/app/apikey" target="_blank" className="underline font-bold text-blue-700 hover:text-blue-900">Google AI Studio</a></span>
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">ឈ្មោះគ្រូបង្រៀន</label>
+                                    <input
+                                        type="text"
+                                        name="teacherName"
+                                        placeholder="ឧ. សុខ សាន្ត"
+                                        value={formData.teacherName}
+                                        onChange={handleInputChange}
+                                        className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-battambang bg-yellow-50"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">កាលបរិច្ឆេទ</label>
+                                    <input
+                                        type="text"
+                                        name="date"
+                                        value={formData.date}
+                                        onChange={handleInputChange}
+                                        className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-battambang bg-yellow-50"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">មុខវិជ្ជា</label>
+                                    <input
+                                        type="text"
+                                        name="subject"
+                                        value={formData.subject}
+                                        onChange={handleInputChange}
+                                        className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-battambang"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">ថ្នាក់ទី</label>
+                                    <input
+                                        type="text"
+                                        name="grade"
+                                        value={formData.grade}
+                                        onChange={handleInputChange}
+                                        className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-battambang"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">រយៈពេល</label>
+                                <input
+                                    type="text"
+                                    name="duration"
+                                    value={formData.duration}
+                                    onChange={handleInputChange}
+                                    className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-battambang"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">ចំណងជើងមេរៀន <span className="text-red-500">*</span></label>
+                                <input
+                                    type="text"
+                                    name="lessonTitle"
+                                    placeholder="ឧ. មេរៀនទី១៖ ស្រៈនិស្ស័យ និងព្យញ្ជនៈ"
+                                    value={formData.lessonTitle}
+                                    onChange={handleInputChange}
+                                    className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-battambang"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">ចំណងជើងរង (បើមាន)</label>
+                                <input
+                                    type="text"
+                                    name="subTitle"
+                                    placeholder="ឧ. ស្រៈ អ អា ដល់ អៅ..."
+                                    value={formData.subTitle}
+                                    onChange={handleInputChange}
+                                    className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-battambang bg-gray-50"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">ឯកសារ / រូបភាពមេរៀន (PNG, JPG, PDF)</label>
+                                <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 rounded-md cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition bg-gray-50">
+                                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                        <i className="fa-solid fa-cloud-arrow-up text-blue-500 text-2xl mb-2"></i>
+                                        <p className="text-xs text-gray-500"><span className="font-semibold text-blue-600">ចុចទីនេះ</span> ដើម្បីជ្រើសរើសឯកសារ</p>
+                                    </div>
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept="image/png, image/jpeg, application/pdf"
+                                        multiple
+                                        onChange={handleFileUpload}
+                                        className="hidden"
+                                    />
+                                </label>
+
+                                {uploadedFiles.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mt-3 p-2 bg-gray-100 rounded-md border border-gray-200">
+                                        {uploadedFiles.map((file, index) => (
+                                            <div key={index} className="relative w-14 h-14 rounded overflow-hidden group border border-gray-300 bg-white shadow-sm flex items-center justify-center">
+                                                {file.mimeType === 'application/pdf' ? (
+                                                    <div className="flex flex-col items-center justify-center w-full h-full text-red-500 p-1 bg-red-50">
+                                                        <i className="fa-solid fa-file-pdf text-xl"></i>
+                                                        <span className="text-[7px] mt-1 truncate w-full text-center text-gray-700" title={file.name}>{file.name}</span>
+                                                    </div>
+                                                ) : (
+                                                    <img src={file.previewUrl} alt={`preview-${index}`} className="w-full h-full object-cover" />
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeFile(index)}
+                                                    className="absolute -top-1 -right-1 bg-red-500 text-white w-5 h-5 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                                                >
+                                                    <i className="fa-solid fa-times text-[10px]"></i>
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">អត្ថបទមេរៀន (ឯកសារយោងបន្ថែម)</label>
+                                <textarea
+                                    name="lessonText"
+                                    rows="4"
+                                    placeholder="បញ្ចូលខ្លឹមសារមេរៀននៅទីនេះ..."
+                                    value={formData.lessonText}
+                                    onChange={handleInputChange}
+                                    className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none resize-y text-sm font-battambang"
+                                ></textarea>
+                            </div>
+
+                            {generatingStatus && (
+                                <div className="p-3 bg-blue-50 text-blue-800 border border-blue-200 rounded-lg text-xs font-battambang flex items-center gap-2.5 animate-pulse shadow-sm">
+                                    <div className="loader w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent"></div>
+                                    <span className="font-semibold">{generatingStatus}</span>
+                                </div>
+                            )}
+
+                            {errorMsg && (
+                                <div className="p-3.5 bg-red-50 text-red-700 border border-red-300 rounded-xl text-xs font-battambang space-y-2 shadow-sm">
+                                    <div className="flex items-start gap-2 font-bold text-red-800 leading-relaxed">
+                                        <i className="fa-solid fa-triangle-exclamation text-red-600 text-sm mt-0.5"></i>
+                                        <span>{errorMsg}</span>
+                                    </div>
+                                    {errorMsg.includes('Gemini 3.8 Flash') && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedModel('gemini-3.8-flash');
+                                                localStorage.setItem('geminiModel', 'gemini-3.8-flash');
+                                                setErrorMsg('');
+                                                setErrorDetails('');
+                                            }}
+                                            className="mt-1 text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow transition flex items-center gap-1.5"
+                                        >
+                                            <i className="fa-solid fa-bolt text-yellow-300"></i> ប្ដូរទៅ Gemini 3.8 Flash ឥឡូវនេះ
+                                        </button>
+                                    )}
+                                    {errorDetails && (
+                                        <details className="mt-1 pt-1 border-t border-red-200">
+                                            <summary className="cursor-pointer text-[11px] text-red-700 font-bold hover:underline">
+                                                🔍 មើលព័ត៌មានលម្អិតបច្ចេកទេស (Technical Details)
+                                            </summary>
+                                            <pre className="mt-1.5 p-2 bg-red-100/70 rounded text-[10px] text-red-900 font-mono whitespace-pre-wrap max-h-32 overflow-y-auto leading-normal">
+                                                {errorDetails}
+                                            </pre>
+                                        </details>
+                                    )}
+                                </div>
+                            )}
+
+                            <button
+                                type="submit"
+                                disabled={isGenerating}
+                                className={`w-full py-3.5 rounded-xl text-white font-bold transition duration-200 flex justify-center items-center gap-2 shadow-md ${isGenerating ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-lg active:scale-[0.99]'}`}
+                            >
+                                {isGenerating ? (
+                                    <>
+                                        <div className="loader w-4 h-4 border-2 border-white border-t-transparent"></div>
+                                        <span>កំពុងដំណើរការបង្កើតកិច្ចតែងការ...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <i className="fa-solid fa-wand-magic-sparkles"></i> បង្កើតកិច្ចតែងការ
+                                    </>
+                                )}
+                            </button>
+                        </form>
+                    </div>
+
+                    <div className="w-full md:w-2/3 bg-gray-300 p-4 md:p-8 overflow-y-auto h-screen relative flex flex-col items-center">
+                        {generatedPlan && (
+                            <div className="sticky top-0 w-full max-w-[21cm] mb-4 no-print z-20 flex flex-wrap items-center justify-between gap-2 bg-white/95 backdrop-blur p-3 rounded-xl shadow border border-gray-200">
+                                <div className="text-xs font-bold text-gray-700 flex items-center gap-2">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                                    <span>កិច្ចតែងការរួចរាល់ {usedModelName ? `(បង្កើតដោយ ${usedModelName})` : ''}</span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                        onClick={exportToWord}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition"
+                                    >
+                                        <i className="fa-solid fa-file-word"></i> ទាញយក Word (DOC)
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="w-full max-w-[21cm] shadow-xl">
+                            <DocumentPreview plan={generatedPlan} contentRef={documentRef} />
+                        </div>
+                    </div>
+                </div >
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
